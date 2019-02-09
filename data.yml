@@ -1,0 +1,35 @@
+Description: >
+  AWS CloudFormation Sample For testing
+  ECR, ECS, CodePipeline.
+
+Resources:
+
+  # MyCodeRepository:
+  #   Type: AWS::CodeCommit::Repository
+  #   Properties:
+  #     RepositoryDescription: My demonstration repository
+  #     RepositoryName: MyDemoRepo
+  #     Triggers:
+  #       - Trigger
+
+  MyDockerContainerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: "cf-test-repository"
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Sid: AllowPushPull
+            Effect: Allow
+            Principal:
+              AWS:
+                - "arn:aws:iam::627330568820:user/sam_user"
+            Action:
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
+              - "ecr:InitiateLayerUpload"
+              - "ecr:UploadLayerPart"
+              - "ecr:CompleteLayerUpload"
