@@ -239,3 +239,7 @@ Outputs:
   NoIngressSecurityGroup:
     Description: Security group with no ingress rule
     Value: !Ref NoIngressSecurityGroup
+
+  DefaultSecurityGroup:
+    Description: Default security group created with VPC
+    Value: !GetAtt VPC.DefaultSecurityGroup
