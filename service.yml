@@ -46,28 +46,12 @@ Resources:
     Properties:
       ClusterName: !Ref EnvironmentName
 
-  ECSLaunchConfiguration:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      KeyName: 20190209_temporary
-      ImageId: !Ref ECSAMI
-      InstanceType: !Ref InstanceType
-      SecurityGroups:
-        - sg-0e9917a72d57fed4b
-      IamInstanceProfile: !Ref 'EC2InstanceProfile'
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash -xe
-          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
-          yum install -y aws-cfn-bootstrap
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
-
   ECSAutoScalingGroup:
     DependsOn: ECSCluster
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier: !Ref Subnets
-      LaunchConfigurationName: !Ref ECSLaunchConfiguration
+      LaunchConfigurationName: !Ref ContainerInstances
       MinSize: !Ref ClusterSize
       MaxSize: !Ref ClusterSize
       DesiredCapacity: !Ref ClusterSize
@@ -90,6 +74,22 @@ Resources:
           - AlarmNotification
           - ScheduledActions
         WaitOnResourceSignals: true
+
+  ContainerInstances:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      KeyName: 20190209_temporary
+      ImageId: !Ref ECSAMI
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - sg-0e9917a72d57fed4b
+      IamInstanceProfile: !Ref 'EC2InstanceProfile'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
