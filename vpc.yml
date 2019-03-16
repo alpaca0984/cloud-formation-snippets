@@ -1,5 +1,6 @@
-# AWS CloudFormation VPC Template
-# https://docs.aws.amazon.com/codebuild/latest/userguide/cloudformation-vpc-template.html
+# References:
+#   - AWS CloudFormation VPC Template
+#     https://docs.aws.amazon.com/codebuild/latest/userguide/cloudformation-vpc-template.html
 
 Description:
   This template deploys a VPC, with a pair of public and private subnets spread

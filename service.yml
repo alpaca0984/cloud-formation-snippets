@@ -1,3 +1,9 @@
+# References:
+#   - Gentle Introduction to How AWS ECS Works with Example Tutorial
+#     https://medium.com/boltops/gentle-introduction-to-how-aws-ecs-works-with-example-tutorial-cea3d27ce63d
+#   - Amazon Elastic Container Service Template Snippets
+#     https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html
+
 AWSTemplateFormatVersion: 2010-09-09
 
 Description: Creating ECS service
