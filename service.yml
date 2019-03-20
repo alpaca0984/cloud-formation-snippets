@@ -17,6 +17,7 @@ Parameters:
   Subnets:
     Description: Choose which subnets the Application Load Balancer should be deployed to
     Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-56abc60f,subnet-5962372e,subnet-a224578a"
 
   DesiredCount:
     Description: How many instances of this task should we run across our cluster?
@@ -45,6 +46,11 @@ Parameters:
     Description: How many ECS hosts do you want to initially deploy?
     Type: Number
     Default: 1
+
+  VPC:
+    Description: VPC
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-5481ea31
 
 Resources:
   ECSCluster:
@@ -147,14 +153,51 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref DefaultTargetGroup
 
+  LoadBalancerListener02:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 8080
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup02
+
   DefaultTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub ${EnvironmentName}-default
-      # VpcId: !Ref VPC
-      VpcId: vpc-5481ea31
+      VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
+
+  TargetGroup02:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-02
+      VpcId: !Ref VPC
+      Port: 8080
+      Protocol: HTTP
+
+  # ------- CodeDeploy -------
+
+  Application:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ComputePlatform: ECS
+
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+      ApplicationName: !Ref Application
+      DeploymentConfigName: "CodeDeployDefault.ECSAllAtOnce"
+      DeploymentGroupName: !Ref EnvironmentName
+      LoadBalancerInfo:
+        ElbInfoList:
+          - Name: !Ref LoadBalancer
+      ServiceRoleArn: arn:aws:iam::627330568820:role/CodeDeployServiceRole
 
   EC2Role:
     Type: AWS::IAM::Role
@@ -234,3 +277,4 @@ Outputs:
 
   TaskDefinition:
     Value: !Ref TaskDefinition
+
