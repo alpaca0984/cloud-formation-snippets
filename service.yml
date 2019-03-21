@@ -179,26 +179,6 @@ Resources:
       Port: 8080
       Protocol: HTTP
 
-  # ------- CodeDeploy -------
-
-  Application:
-    Type: AWS::CodeDeploy::Application
-    Properties:
-      ComputePlatform: ECS
-
-  DeploymentGroup:
-    Type: AWS::CodeDeploy::DeploymentGroup
-    Properties:
-      Path: /
-      Roles: [!Ref 'EC2Role']
-      ApplicationName: !Ref Application
-      DeploymentConfigName: "CodeDeployDefault.ECSAllAtOnce"
-      DeploymentGroupName: !Ref EnvironmentName
-      LoadBalancerInfo:
-        ElbInfoList:
-          - Name: !Ref LoadBalancer
-      ServiceRoleArn: arn:aws:iam::627330568820:role/CodeDeployServiceRole
-
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
