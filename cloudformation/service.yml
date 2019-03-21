@@ -14,21 +14,24 @@ Parameters:
     Type: String
     Default: 'cf-test'
 
-  Subnets:
-    Description: Choose which subnets the Application Load Balancer should be deployed to
-    Type: List<AWS::EC2::Subnet::Id>
-    Default: "subnet-56abc60f,subnet-5962372e,subnet-a224578a"
-
+  # ECS Service
   DesiredCount:
     Description: How many instances of this task should we run across our cluster?
     Type: Number
     Default: 1
-
   MaxCount:
     Description: Maximum number of instances of this task we can run across our cluster
     Type: Number
     Default: 2
+  DockerImageUrl:
+    Description: Docker Image Url
+    Type: String
 
+  # ECS Cluster
+  ECSAMI:
+    Description: ECS-Optimized AMI ID
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
   InstanceType:
     Description: Which instance type should we use to build the ECS cluster?
     Type: String
@@ -36,21 +39,18 @@ Parameters:
       - t2.micro
       - t2.small
     Default: t2.micro
-
-  ECSAMI:
-    Description: ECS-Optimized AMI ID
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
-
   ClusterSize:
     Description: How many ECS hosts do you want to initially deploy?
     Type: Number
     Default: 1
-
   VPC:
     Description: VPC
     Type: AWS::EC2::VPC::Id
     Default: vpc-5481ea31
+  Subnets:
+    Description: Choose which subnets the Application Load Balancer should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-56abc60f,subnet-5962372e,subnet-a224578a"
 
 Resources:
   ECSCluster:
@@ -110,14 +110,12 @@ Resources:
       Family: sinatra-hi
       Memory: '128'
       ContainerDefinitions:
-        - Name: cf-web
-          Image: tongueroo/sinatra
+        - Name: cfn-app
+          Image: !Ref DockerImageUrl
+          Essential: true
           PortMappings:
             - ContainerPort: 4567
               Protocol: tcp
-          Command:
-            - 'ruby'
-            - 'hi.rb'
 
   Service:
     Type: AWS::ECS::Service
