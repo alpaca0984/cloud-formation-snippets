@@ -277,4 +277,3 @@ Outputs:
 
   TaskDefinition:
     Value: !Ref TaskDefinition
-
