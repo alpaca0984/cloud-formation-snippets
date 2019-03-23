@@ -5,6 +5,8 @@
 #     https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-env-vars.html
 #   - Create a Pipeline in CodePipeline
 #     https://docs.aws.amazon.com/codepipeline/latest/userguide/pipelines-create.html#pipelines-create-image-definitions
+#   - Tutorial: Continuous Deployment with CodePipeline
+#     https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-cd-pipeline.html
 
 version: 0.2
 

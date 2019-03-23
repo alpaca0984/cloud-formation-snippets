@@ -151,16 +151,6 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref DefaultTargetGroup
 
-  # LoadBalancerListener02:
-  #   Type: AWS::ElasticLoadBalancingV2::Listener
-  #   Properties:
-  #     LoadBalancerArn: !Ref LoadBalancer
-  #     Port: 8080
-  #     Protocol: HTTP
-  #     DefaultActions:
-  #       - Type: forward
-  #         TargetGroupArn: !Ref TargetGroup02
-
   DefaultTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -168,14 +158,6 @@ Resources:
       VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
-
-  # TargetGroup02:
-  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
-  #   Properties:
-  #     Name: !Sub ${EnvironmentName}-02
-  #     VpcId: !Ref VPC
-  #     Port: 8080
-  #     Protocol: HTTP
 
   EC2Role:
     Type: AWS::IAM::Role
