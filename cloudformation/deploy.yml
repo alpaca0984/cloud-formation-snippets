@@ -1,20 +1,29 @@
+# References:
+#   - Docker Sample for CodeBuild
+#     https://docs.aws.amazon.com/codebuild/latest/userguide/sample-docker.html
+
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
 
 Parameters:
   # CodePipeline: Source stage
-  GitHubRepo:
-    Type: String
-    Default: alpaca0984/cloud-formation-test
-  GitHubBranch:
-    Type: String
-    Default: code-pipeline
-  GitHubToken:
-    Type: String
-    NoEcho: true
   GitHubUser:
     Type: String
     Default: alpaca0984
+  GitHubRepo:
+    Type: String
+    Default: cloud-formation-test
+  GitHubBranch:
+    Type: String
+    Default: code-pipeline-deploy-test
+  GitHubToken:
+    Type: String
+    NoEcho: true
+
+  # CodePipeline: Build stage
+  Repository:
+    Type: String
+    Default: my-repository
 
   # CodePipeline: Release stage
   Cluster:
@@ -79,7 +88,7 @@ Resources:
               Configuration:
                 ClusterName: !Ref Cluster
                 ServiceName: !Ref Service
-                FileName: images.json
+                FileName: imagedefinitions.json
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
@@ -123,10 +132,6 @@ Resources:
 
   # ----- CodeBuild -----
 
-  Repository:
-    Type: AWS::ECR::Repository
-    DeletionPolicy: Retain
-
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -159,8 +164,12 @@ Resources:
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
             Value: !Ref AWS::Region
-          - Name: REPOSITORY_URI
-            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: !Ref Repository
+          - Name: IMAGE_TAG
+            Value: latest
       Name: !Ref AWS::StackName
       ServiceRole: !Ref CodeBuildServiceRole
 
