@@ -5,7 +5,6 @@
 #     https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html
 
 AWSTemplateFormatVersion: 2010-09-09
-
 Description: Creating ECS service
 
 Parameters:
@@ -51,6 +50,10 @@ Parameters:
     Description: Choose which subnets the Application Load Balancer should be deployed to
     Type: List<AWS::EC2::Subnet::Id>
     Default: "subnet-56abc60f,subnet-5962372e,subnet-a224578a"
+  SecurityGroups:
+    Description: Choose which security groups the Application Load Balancer should use
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Default: "sg-5a0be43e"
 
 Resources:
   ECSCluster:
@@ -93,8 +96,7 @@ Resources:
       KeyName: 20190209_temporary
       ImageId: !Ref ECSAMI
       InstanceType: !Ref InstanceType
-      SecurityGroups:
-        - sg-0e9917a72d57fed4b
+      SecurityGroups: !Ref SecurityGroups
       IamInstanceProfile: !Ref 'EC2InstanceProfile'
       UserData:
         Fn::Base64: !Sub |
@@ -107,14 +109,13 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Cpu: '128'
-      Family: sinatra-hi
       Memory: '128'
       ContainerDefinitions:
-        - Name: cfn-app
+        - Name: cf-web
           Image: !Ref DockerImageUrl
           Essential: true
           PortMappings:
-            - ContainerPort: 4567
+            - ContainerPort: 5000
               Protocol: tcp
 
   Service:
@@ -127,7 +128,7 @@ Resources:
       TaskDefinition: !Ref TaskDefinition
       LoadBalancers:
         - ContainerName: "cf-web"
-          ContainerPort: 4567
+          ContainerPort: 5000
           TargetGroupArn: !Ref DefaultTargetGroup
 
   LoadBalancer:
@@ -135,8 +136,7 @@ Resources:
     Properties:
       Name: !Ref EnvironmentName
       Subnets: !Ref Subnets
-      SecurityGroups:
-        - sg-00f564d4428144654
+      SecurityGroups: !Ref SecurityGroups
       Tags:
         - Key: Name
           Value: !Ref EnvironmentName
@@ -151,15 +151,15 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref DefaultTargetGroup
 
-  LoadBalancerListener02:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 8080
-      Protocol: HTTP
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup02
+  # LoadBalancerListener02:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Properties:
+  #     LoadBalancerArn: !Ref LoadBalancer
+  #     Port: 8080
+  #     Protocol: HTTP
+  #     DefaultActions:
+  #       - Type: forward
+  #         TargetGroupArn: !Ref TargetGroup02
 
   DefaultTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -169,13 +169,13 @@ Resources:
       Port: 80
       Protocol: HTTP
 
-  TargetGroup02:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub ${EnvironmentName}-02
-      VpcId: !Ref VPC
-      Port: 8080
-      Protocol: HTTP
+  # TargetGroup02:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Name: !Sub ${EnvironmentName}-02
+  #     VpcId: !Ref VPC
+  #     Port: 8080
+  #     Protocol: HTTP
 
   EC2Role:
     Type: AWS::IAM::Role
