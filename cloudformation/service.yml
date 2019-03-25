@@ -5,7 +5,6 @@
 #     https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html
 
 AWSTemplateFormatVersion: 2010-09-09
-
 Description: Creating ECS service
 
 Parameters:
@@ -14,20 +13,24 @@ Parameters:
     Type: String
     Default: 'cf-test'
 
-  Subnets:
-    Description: Choose which subnets the Application Load Balancer should be deployed to
-    Type: List<AWS::EC2::Subnet::Id>
-
+  # ECS Service
   DesiredCount:
     Description: How many instances of this task should we run across our cluster?
     Type: Number
     Default: 1
-
   MaxCount:
     Description: Maximum number of instances of this task we can run across our cluster
     Type: Number
     Default: 2
+  DockerImageUrl:
+    Description: Docker Image Url
+    Type: String
 
+  # ECS Cluster
+  ECSAMI:
+    Description: ECS-Optimized AMI ID
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
   InstanceType:
     Description: Which instance type should we use to build the ECS cluster?
     Type: String
@@ -35,16 +38,22 @@ Parameters:
       - t2.micro
       - t2.small
     Default: t2.micro
-
-  ECSAMI:
-    Description: ECS-Optimized AMI ID
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
-
   ClusterSize:
     Description: How many ECS hosts do you want to initially deploy?
     Type: Number
     Default: 1
+  VPC:
+    Description: VPC
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-5481ea31
+  Subnets:
+    Description: Choose which subnets the Application Load Balancer should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-56abc60f,subnet-5962372e,subnet-a224578a"
+  SecurityGroups:
+    Description: Choose which security groups the Application Load Balancer should use
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Default: "sg-5a0be43e"
 
 Resources:
   ECSCluster:
@@ -87,8 +96,7 @@ Resources:
       KeyName: 20190209_temporary
       ImageId: !Ref ECSAMI
       InstanceType: !Ref InstanceType
-      SecurityGroups:
-        - sg-0e9917a72d57fed4b
+      SecurityGroups: !Ref SecurityGroups
       IamInstanceProfile: !Ref 'EC2InstanceProfile'
       UserData:
         Fn::Base64: !Sub |
@@ -101,17 +109,14 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Cpu: '128'
-      Family: sinatra-hi
       Memory: '128'
       ContainerDefinitions:
         - Name: cf-web
-          Image: tongueroo/sinatra
+          Image: !Ref DockerImageUrl
+          Essential: true
           PortMappings:
-            - ContainerPort: 4567
+            - ContainerPort: 5000
               Protocol: tcp
-          Command:
-            - 'ruby'
-            - 'hi.rb'
 
   Service:
     Type: AWS::ECS::Service
@@ -123,7 +128,7 @@ Resources:
       TaskDefinition: !Ref TaskDefinition
       LoadBalancers:
         - ContainerName: "cf-web"
-          ContainerPort: 4567
+          ContainerPort: 5000
           TargetGroupArn: !Ref DefaultTargetGroup
 
   LoadBalancer:
@@ -131,8 +136,7 @@ Resources:
     Properties:
       Name: !Ref EnvironmentName
       Subnets: !Ref Subnets
-      SecurityGroups:
-        - sg-00f564d4428144654
+      SecurityGroups: !Ref SecurityGroups
       Tags:
         - Key: Name
           Value: !Ref EnvironmentName
@@ -151,8 +155,7 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub ${EnvironmentName}-default
-      # VpcId: !Ref VPC
-      VpcId: vpc-5481ea31
+      VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
 
