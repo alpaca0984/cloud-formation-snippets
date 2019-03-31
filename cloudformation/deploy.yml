@@ -186,13 +186,15 @@ Resources:
           phases:
             pre_build:
               commands:
-                - echo change desired count to some value
+                # - !Sub aws ecs update-service --cluster ${Cluster} --service ${Service} --desired-count 3
+                - aws sts get-caller-identity
             build:
               commands:
-                - sleep 5
+                - sleep 3
             post_build:
               commands:
-                - echo change desired count to zero
+                # - !Sub aws ecs update-service --cluster ${Cluster} --service ${Service} --desired-count 0
+                - aws s3 ls
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/docker:17.09.0
