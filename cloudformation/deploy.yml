@@ -118,17 +118,17 @@ Resources:
                 # - Name: BuildOutput
                 - Name: App
               RunOrder: 1
-            - name: Approve
-              actionTypeId:
-                category: Approval
-                owner: AWS
-                version: '1'
-                provider: Manual
-              configuration:
+            - Name: Approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: '1'
+                Provider: Manual
+              Configuration:
                 NotificationArn: !Ref SNSTopic
                 # ExternalEntityLink: http://example.com
                 # CustomData: The latest changes include feedback from Bob.
-              runOrder: 2
+              RunOrder: 2
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
