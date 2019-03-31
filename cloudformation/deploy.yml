@@ -301,13 +301,12 @@ Resources:
         Variables:
           SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
           SLACK_CHANNEL: cloudformation
-      FunctionName: slack-syscrit
-      Handler: slack-syscrit.lambda_handler
+      Handler: index.lambda_handler
       Role: !GetAtt 'IAMRole.Arn'
       Runtime: python3.6
       Timeout: 10
       Code:
-        ZipFile: >
+        ZipFile: |
           # This function is invoked via SNS when the CodePipeline manual approval action starts.
           # It will take the details from this approval notification and sent an interactive message to Slack that allows users to approve or cancel the deployment.
 
