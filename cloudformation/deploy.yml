@@ -50,6 +50,8 @@ Resources:
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - SNSTopic
     Properties:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
