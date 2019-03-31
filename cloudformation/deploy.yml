@@ -62,35 +62,53 @@ Resources:
               OutputArtifacts:
                 - Name: App
               RunOrder: 1
-        - Name: Build
+        # - Name: Build
+        #   Actions:
+        #     - Name: Build
+        #       ActionTypeId:
+        #         Category: Build
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: CodeBuild
+        #       Configuration:
+        #         ProjectName: !Ref CodeBuildProject
+        #       InputArtifacts:
+        #         - Name: App
+        #       OutputArtifacts:
+        #         - Name: BuildOutput
+        #       RunOrder: 1
+        # - Name: Deploy
+        #   Actions:
+        #     - Name: Deploy
+        #       ActionTypeId:
+        #         Category: Deploy
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: ECS
+        #       Configuration:
+        #         ClusterName: !Ref Cluster
+        #         ServiceName: !Ref Service
+        #         FileName: imagedefinitions.json
+        #       InputArtifacts:
+        #         - Name: BuildOutput
+        #       OutputArtifacts:
+        #         - Name: DeployOutput
+        #       RunOrder: 1
+        - Name: Test
           Actions:
-            - Name: Build
+            - Name: Test
               ActionTypeId:
-                Category: Build
+                Category: Test
                 Owner: AWS
                 Version: 1
                 Provider: CodeBuild
               Configuration:
-                ProjectName: !Ref CodeBuildProject
+                ProjectName: !Ref CodeBuildTestingProject
               InputArtifacts:
+                # - Name: DeployOutput
                 - Name: App
-              OutputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
-        - Name: Deploy
-          Actions:
-            - Name: Deploy
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: ECS
-              Configuration:
-                ClusterName: !Ref Cluster
-                ServiceName: !Ref Service
-                FileName: imagedefinitions.json
-              InputArtifacts:
-                - Name: BuildOutput
+              # OutputArtifacts:
+              #   - Name: BuildOutput
               RunOrder: 1
 
   CodePipelineServiceRole:
@@ -154,6 +172,32 @@ Resources:
           - Name: IMAGE_TAG
             Value: latest
       Name: !Ref AWS::StackName
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  CodeBuildTestingProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo change desired count to some value
+            build:
+              commands:
+                - sleep 5
+            post_build:
+              commands:
+                - echo change desired count to zero
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/docker:17.09.0
+        Type: LINUX_CONTAINER
+      Name: !Sub ${AWS::StackName}-testing
       ServiceRole: !Ref CodeBuildServiceRole
 
   CodeBuildServiceRole:
