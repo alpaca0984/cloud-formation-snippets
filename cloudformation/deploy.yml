@@ -62,41 +62,39 @@ Resources:
               OutputArtifacts:
                 - Name: App
               RunOrder: 1
-        # - Name: Build
-        #   Actions:
-        #     - Name: Build
-        #       ActionTypeId:
-        #         Category: Build
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: CodeBuild
-        #       Configuration:
-        #         ProjectName: !Ref CodeBuildProject
-        #       InputArtifacts:
-        #         - Name: App
-        #       OutputArtifacts:
-        #         - Name: BuildOutput
-        #       RunOrder: 1
-        # - Name: Deploy
-        #   Actions:
-        #     - Name: Deploy
-        #       ActionTypeId:
-        #         Category: Deploy
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: ECS
-        #       Configuration:
-        #         ClusterName: !Ref Cluster
-        #         ServiceName: !Ref Service
-        #         FileName: imagedefinitions.json
-        #       InputArtifacts:
-        #         - Name: BuildOutput
-        #       OutputArtifacts:
-        #         - Name: DeployOutput
-        #       RunOrder: 1
-        - Name: Test
+        - Name: Build
           Actions:
-            - Name: Test
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ECS
+              Configuration:
+                ClusterName: !Ref Cluster
+                ServiceName: !Ref Service
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Check
+          Actions:
+            - Name: Check
               ActionTypeId:
                 Category: Test
                 Owner: AWS
@@ -105,10 +103,7 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildTestingProject
               InputArtifacts:
-                # - Name: DeployOutput
-                - Name: App
-              # OutputArtifacts:
-              #   - Name: BuildOutput
+                - Name: BuildOutput
               RunOrder: 1
 
   CodePipelineServiceRole:
