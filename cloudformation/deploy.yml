@@ -166,6 +166,7 @@ Resources:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                   - iam:PassRole
+                  - sns:Publish
 
   # ----- CodeBuild -----
 
