@@ -32,9 +32,7 @@ Parameters:
     Default: my-repository
 
   # CodePipeline: Release stage
-  Cluster:
-    Type: String
-  Service:
+  ECSStackName:
     Type: String
 
   # CodePipeline: Check stage
@@ -120,8 +118,12 @@ Resources:
                 Version: 1
                 Provider: ECS
               Configuration:
-                ClusterName: !Ref Cluster
-                ServiceName: !Ref Service
+                ClusterName:
+                  Fn::ImportValue:
+                    !Sub "${ECSStackName}-ClusterName"
+                ServiceName:
+                  Fn::ImportValue:
+                    !Sub "${ECSStackName}-ServiceName"
                 FileName: imagedefinitions.json
               InputArtifacts:
                 - Name: BuildOutput
@@ -219,9 +221,13 @@ Resources:
         Type: LINUX_CONTAINER
         EnvironmentVariables:
           - Name: Cluster
-            Value: !Ref Cluster
+            Value:
+              Fn::ImportValue:
+                !Sub "${ECSStackName}-ClusterName"
           - Name: Service
-            Value: !Ref Service
+            Value:
+              Fn::ImportValue:
+                !Sub "${ECSStackName}-ServiceName"
       Name: !Sub ${AWS::StackName}-testing
       ServiceRole: !Ref CodeBuildServiceRole
 
