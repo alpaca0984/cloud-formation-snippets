@@ -74,50 +74,49 @@ Resources:
               OutputArtifacts:
                 - Name: App
               RunOrder: 1
-        # - Name: Build
-        #   Actions:
-        #     - Name: Build
-        #       ActionTypeId:
-        #         Category: Build
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: CodeBuild
-        #       Configuration:
-        #         ProjectName: !Ref CodeBuildProject
-        #       InputArtifacts:
-        #         - Name: App
-        #       OutputArtifacts:
-        #         - Name: BuildOutput
-        #       RunOrder: 1
-        # - Name: Deploy
-        #   Actions:
-        #     - Name: Deploy
-        #       ActionTypeId:
-        #         Category: Deploy
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: ECS
-        #       Configuration:
-        #         ClusterName: !Ref Cluster
-        #         ServiceName: !Ref Service
-        #         FileName: imagedefinitions.json
-        #       InputArtifacts:
-        #         - Name: BuildOutput
-        #       RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ECS
+              Configuration:
+                ClusterName: !Ref Cluster
+                ServiceName: !Ref Service
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
         - Name: Check
           Actions:
-            # - Name: Check
-            #   ActionTypeId:
-            #     Category: Test
-            #     Owner: AWS
-            #     Version: 1
-            #     Provider: CodeBuild
-            #   Configuration:
-            #     ProjectName: !Ref CodeBuildTestingProject
-            #   InputArtifacts:
-            #     # - Name: BuildOutput
-            #     - Name: App
-            #   RunOrder: 1
+            - Name: Check
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildTestingProject
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
             - Name: Approval
               ActionTypeId:
                 Category: Approval
@@ -126,10 +125,7 @@ Resources:
                 Provider: Manual
               Configuration:
                 NotificationArn: !Ref SNSTopic
-                # ExternalEntityLink: http://example.com
-                # CustomData: The latest changes include feedback from Bob.
-              # RunOrder: 2
-              RunOrder: 1
+              RunOrder: 2
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
