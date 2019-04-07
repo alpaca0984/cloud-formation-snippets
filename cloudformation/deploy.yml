@@ -280,7 +280,7 @@ Resources:
 
   # ----- CodePipeline approval actions -----
 
-  IAMRole:
+  LambdaFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -296,9 +296,9 @@ Resources:
       Path: /
       RoleName: lambda-slack-syscrit
 
-  LambdaFunction:
+  LambdaApprovalRequestFunction:
     DependsOn:
-      - IAMRole
+      - LambdaFunctionRole
     Type: AWS::Lambda::Function
     Properties:
       Environment:
@@ -306,7 +306,7 @@ Resources:
           SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
           SLACK_CHANNEL: cloudformation
       Handler: index.lambda_handler
-      Role: !GetAtt 'IAMRole.Arn'
+      Role: !GetAtt 'LambdaFunctionRole.Arn'
       Runtime: python3.6
       Timeout: 10
       Code:
@@ -383,20 +383,20 @@ Resources:
 
   SNSTopic:
     DependsOn:
-      - LambdaFunction
+      - LambdaApprovalRequestFunction
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: slack syscrit
       TopicName: slack-syscrit
       Subscription:
-        - Endpoint: !GetAtt 'LambdaFunction.Arn'
+        - Endpoint: !GetAtt 'LambdaApprovalRequestFunction.Arn'
           Protocol: lambda
 
-  LambdaPermission:
+  LambdaApprovalRequestPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt 'LambdaFunction.Arn'
+      FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
       Principal: sns.amazonaws.com
       SourceArn: !Ref 'SNSTopic'
 
