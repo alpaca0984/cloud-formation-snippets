@@ -7,6 +7,8 @@
 #     https://aws.amazon.com/blogs/devops/use-slack-chatops-to-deploy-your-code-how-to-integrate-your-pipeline-in-aws-codepipeline-with-your-slack-channel/
 #   - CloudFormationテンプレート(JSON) - SNS トリガで Lambda を呼び出して Slack へ
 #     https://qiita.com/tonishy/items/202056e9f7a865eb60be
+#   - CloudFormation example for API Gateway integration to Lambda function
+#     https://gist.github.com/magnetikonline/c314952045eee8e8375b82bc7ec68e88
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
@@ -35,8 +37,10 @@ Parameters:
   ECSStackName:
     Type: String
 
-  # CodePipeline: Check stage
+  # CodePipeline: Approval phase
   SlackWebHookUrl:
+    Type: String
+  SlackVerificationToken:
     Type: String
 
 Resources:
@@ -72,37 +76,37 @@ Resources:
               OutputArtifacts:
                 - Name: App
               RunOrder: 1
-        - Name: Build
-          Actions:
-            - Name: Build
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Version: 1
-                Provider: CodeBuild
-              Configuration:
-                ProjectName: !Ref CodeBuildProject
-              InputArtifacts:
-                - Name: App
-              OutputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
-        - Name: Test
-          Actions:
-            - Name: Test
-              ActionTypeId:
-                Category: Test
-                Owner: AWS
-                Version: 1
-                Provider: CodeBuild
-              Configuration:
-                ProjectName: !Ref CodeBuildTestingProject
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
+        # - Name: Build
+        #   Actions:
+        #     - Name: Build
+        #       ActionTypeId:
+        #         Category: Build
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: CodeBuild
+        #       Configuration:
+        #         ProjectName: !Ref CodeBuildProject
+        #       InputArtifacts:
+        #         - Name: App
+        #       OutputArtifacts:
+        #         - Name: BuildOutput
+        #       RunOrder: 1
+        # - Name: Test
+        #   Actions:
+        #     - Name: Test
+        #       ActionTypeId:
+        #         Category: Test
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: CodeBuild
+        #       Configuration:
+        #         ProjectName: !Ref CodeBuildTestingProject
+        #       InputArtifacts:
+        #         - Name: BuildOutput
+        #       RunOrder: 1
         - Name: Approval
           Actions:
-            - Name: Approval
+            - Name: ApprovalOrDeny
               ActionTypeId:
                 Category: Approval
                 Owner: AWS
@@ -111,25 +115,25 @@ Resources:
               Configuration:
                 NotificationArn: !Ref SNSTopic
               RunOrder: 1
-        - Name: Deploy
-          Actions:
-            - Name: Deploy
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: ECS
-              Configuration:
-                ClusterName:
-                  Fn::ImportValue:
-                    !Sub "${ECSStackName}-ClusterName"
-                ServiceName:
-                  Fn::ImportValue:
-                    !Sub "${ECSStackName}-ServiceName"
-                FileName: imagedefinitions.json
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
+        # - Name: Deploy
+        #   Actions:
+        #     - Name: Deploy
+        #       ActionTypeId:
+        #         Category: Deploy
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: ECS
+        #       Configuration:
+        #         ClusterName:
+        #           Fn::ImportValue:
+        #             !Sub "${ECSStackName}-ClusterName"
+        #         ServiceName:
+        #           Fn::ImportValue:
+        #             !Sub "${ECSStackName}-ServiceName"
+        #         FileName: imagedefinitions.json
+        #       InputArtifacts:
+        #         - Name: BuildOutput
+        #       RunOrder: 1
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -278,7 +282,7 @@ Resources:
                 Action:
                   - ecs:DescribeServices
 
-  # ----- CodePipeline approval actions -----
+  # Approval phase: Request approval
 
   LambdaFunctionRole:
     Type: AWS::IAM::Role
@@ -399,6 +403,148 @@ Resources:
       FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
       Principal: sns.amazonaws.com
       SourceArn: !Ref 'SNSTopic'
+
+  # Approval phase: Interactive message handler
+
+  apiGateway:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: "my-api"
+      Description: "My API"
+
+  # apiGatewayResource:
+  #   Type: AWS::ApiGateway::Resource
+  #   Properties:
+  #     RestApiId:
+  #       Ref: apiGateway
+  #     ParentId:
+  #       Fn::GetAtt:
+  #         - "apiGateway"
+  #         - "RootResourceId"
+  #     PathPart: "stack"
+
+  apiGatewayRootMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - apiGateway
+      - lambdaFunction
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
+          - { lambdaArn: !GetAtt "lambdaFunction.Arn" }
+      ResourceId: !GetAtt "apiGateway.RootResourceId"
+      RestApiId: !Ref "apiGateway"
+
+  apiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+      - "apiGatewayRootMethod"
+    Properties:
+      RestApiId: !Ref "apiGateway"
+      StageName: "v1"
+
+  lambdaFunction:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - lambdaIAMRole
+    Properties:
+      Environment:
+        Variables:
+          SLACK_VERIFICATION_TOKEN: !Ref SlackVerificationToken
+      Handler: index.lambda_handler
+      Role: !GetAtt "lambdaIAMRole.Arn"
+      Runtime: python3.6
+      Timeout: 10
+      Code:
+        ZipFile: |
+          # This function is triggered via API Gateway when a user acts on the Slack interactive message sent by approval_requester.py.
+
+          from urllib.parse import parse_qs
+          import json
+          import os
+          import boto3
+
+          SLACK_VERIFICATION_TOKEN = os.environ['SLACK_VERIFICATION_TOKEN']
+
+          #Triggered by API Gateway
+          #It kicks off a particular CodePipeline project
+          def lambda_handler(event, context):
+          	#print("Received event: " + json.dumps(event, indent=2))
+          	body = parse_qs(event['body'])
+          	payload = json.loads(body['payload'][0])
+
+          	# Validate Slack token
+          	if SLACK_VERIFICATION_TOKEN == payload['token']:
+          		send_slack_message(json.loads(payload['actions'][0]['value']))
+
+          		# This will replace the interactive message with a simple text response.
+          		# You can implement a more complex message update if you would like.
+          		return  {
+          			"isBase64Encoded": "false",
+          			"statusCode": 200,
+          			"body": "{\"text\": \"The approval has been processed\"}"
+          		}
+          	else:
+          		return  {
+          			"isBase64Encoded": "false",
+          			"statusCode": 403,
+          			"body": "{\"error\": \"This request does not include a vailid verification token.\"}"
+          		}
+
+
+          def send_slack_message(action_details):
+          	codepipeline_status = "Approved" if action_details["approve"] else "Rejected"
+          	codepipeline_name = action_details["codePipelineName"]
+          	token = action_details["codePipelineToken"]
+
+          	client = boto3.client('codepipeline')
+          	response_approval = client.put_approval_result(
+          							pipelineName=codepipeline_name,
+          							stageName='Approval',
+          							actionName='ApprovalOrDeny',
+          							result={'summary':'','status':codepipeline_status},
+          							token=token)
+          	print(response_approval)
+
+  lambdaApiGatewayInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "lambdaFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/POST/"
+
+  lambdaIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codepipeline:PutApprovalResult
+      Path: /
+      RoleName: lambda-interactive-message-handler
 
 Outputs:
   PipelineUrl:
