@@ -297,6 +297,15 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codepipeline:PutApprovalResult
       Path: /
       RoleName: lambda-slack-syscrit
 
@@ -406,28 +415,28 @@ Resources:
 
   # Approval phase: Interactive message handler
 
-  apiGateway:
+  ApiGateway:
     Type: "AWS::ApiGateway::RestApi"
     Properties:
       Name: "my-api"
       Description: "My API"
 
-  # apiGatewayResource:
+  # ApiGatewayResource:
   #   Type: AWS::ApiGateway::Resource
   #   Properties:
   #     RestApiId:
-  #       Ref: apiGateway
+  #       Ref: ApiGateway
   #     ParentId:
   #       Fn::GetAtt:
-  #         - "apiGateway"
+  #         - "ApiGateway"
   #         - "RootResourceId"
-  #     PathPart: "stack"
+  #     PathPart: "test"
 
-  apiGatewayRootMethod:
+  ApiGatewayRootMethod:
     Type: "AWS::ApiGateway::Method"
     DependsOn:
-      - apiGateway
-      - lambdaFunction
+      - ApiGateway
+      - LambdaHandlingInteractiveMessageFunction
     Properties:
       AuthorizationType: "NONE"
       HttpMethod: "POST"
@@ -436,28 +445,28 @@ Resources:
         Type: "AWS_PROXY"
         Uri: !Sub
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
-          - { lambdaArn: !GetAtt "lambdaFunction.Arn" }
-      ResourceId: !GetAtt "apiGateway.RootResourceId"
-      RestApiId: !Ref "apiGateway"
+          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+      ResourceId: !GetAtt "ApiGateway.RootResourceId"
+      RestApiId: !Ref "ApiGateway"
 
-  apiGatewayDeployment:
+  ApiGatewayDeployment:
     Type: "AWS::ApiGateway::Deployment"
     DependsOn:
-      - "apiGatewayRootMethod"
+      - "ApiGatewayRootMethod"
     Properties:
-      RestApiId: !Ref "apiGateway"
+      RestApiId: !Ref "ApiGateway"
       StageName: "v1"
 
-  lambdaFunction:
+  LambdaHandlingInteractiveMessageFunction:
     Type: "AWS::Lambda::Function"
     DependsOn:
-      - lambdaIAMRole
+      - LambdaFunctionRole
     Properties:
       Environment:
         Variables:
           SLACK_VERIFICATION_TOKEN: !Ref SlackVerificationToken
       Handler: index.lambda_handler
-      Role: !GetAtt "lambdaIAMRole.Arn"
+      Role: !GetAtt "LambdaFunctionRole.Arn"
       Runtime: python3.6
       Timeout: 10
       Code:
@@ -511,40 +520,13 @@ Resources:
           							token=token)
           	print(response_approval)
 
-  lambdaApiGatewayInvoke:
+  LambdaApiGatewayInvoke:
     Type: "AWS::Lambda::Permission"
     Properties:
       Action: "lambda:InvokeFunction"
-      FunctionName: !GetAtt "lambdaFunction.Arn"
+      FunctionName: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/POST/"
-
-  lambdaIAMRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Action:
-              - "sts:AssumeRole"
-            Effect: "Allow"
-            Principal:
-              Service:
-                - "lambda.amazonaws.com"
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Resource: "*"
-                Effect: Allow
-                Action:
-                  - codepipeline:PutApprovalResult
-      Path: /
-      RoleName: lambda-interactive-message-handler
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/"
 
 Outputs:
   PipelineUrl:
