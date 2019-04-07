@@ -420,17 +420,7 @@ Resources:
     Properties:
       Name: "my-api"
       Description: "My API"
-
-  # ApiGatewayResource:
-  #   Type: AWS::ApiGateway::Resource
-  #   Properties:
-  #     RestApiId:
-  #       Ref: ApiGateway
-  #     ParentId:
-  #       Fn::GetAtt:
-  #         - "ApiGateway"
-  #         - "RootResourceId"
-  #     PathPart: "test"
+      FailOnWarnings: "true"
 
   ApiGatewayRootMethod:
     Type: "AWS::ApiGateway::Method"
@@ -449,10 +439,37 @@ Resources:
       ResourceId: !GetAtt "ApiGateway.RootResourceId"
       RestApiId: !Ref "ApiGateway"
 
+  ApiGatewayTestResource:
+    Type: AWS::ApiGateway::Resource
+    DependsOn:
+      - ApiGateway
+    Properties:
+      RestApiId: !Ref "ApiGateway"
+      ParentId: !GetAtt "ApiGateway.RootResourceId"
+      PathPart: "test"
+
+  ApiGatewayTestMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - ApiGatewayTestResource
+      - LambdaHandlingInteractiveMessageFunction
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
+          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+      ResourceId: !Ref "ApiGatewayTestResource"
+      RestApiId: !Ref "ApiGateway"
+
   ApiGatewayDeployment:
     Type: "AWS::ApiGateway::Deployment"
     DependsOn:
       - "ApiGatewayRootMethod"
+      - "ApiGatewayTestMethod"
     Properties:
       RestApiId: !Ref "ApiGateway"
       StageName: "v1"
@@ -526,7 +543,7 @@ Resources:
       Action: "lambda:InvokeFunction"
       FunctionName: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
       Principal: "apigateway.amazonaws.com"
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/test"
 
 Outputs:
   PipelineUrl:
