@@ -231,9 +231,15 @@ Resources:
 Outputs:
   ECSCluster:
     Value: !Ref ECSCluster
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterName
 
   ECSService:
-    Value: !Ref Service
+    Value: !GetAtt 'Service.Name'
+    Export:
+      Name: !Sub ${AWS::StackName}-ServiceName
 
   TaskDefinition:
     Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub ${AWS::StackName}-TaskDefinition

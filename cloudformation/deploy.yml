@@ -1,6 +1,14 @@
 # References:
 #   - awslabs/ecs-refarch-continuous-deployment
 #     https://github.com/awslabs/ecs-refarch-continuous-deployment/blob/master/templates/deployment-pipeline.yaml
+#   - Add a Manual Approval Action to a Pipeline in CodePipeline
+#     https://docs.aws.amazon.com/codepipeline/latest/userguide/approvals-action-add.html
+#   - Use Slack ChatOps to Deploy Your Code – How to Integrate Your Pipeline in AWS CodePipeline with Your Slack Channel
+#     https://aws.amazon.com/blogs/devops/use-slack-chatops-to-deploy-your-code-how-to-integrate-your-pipeline-in-aws-codepipeline-with-your-slack-channel/
+#   - CloudFormationテンプレート(JSON) - SNS トリガで Lambda を呼び出して Slack へ
+#     https://qiita.com/tonishy/items/202056e9f7a865eb60be
+#   - CloudFormation example for API Gateway integration to Lambda function
+#     https://gist.github.com/magnetikonline/c314952045eee8e8375b82bc7ec68e88
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
@@ -26,9 +34,13 @@ Parameters:
     Default: my-repository
 
   # CodePipeline: Release stage
-  Cluster:
+  ECSStackName:
     Type: String
-  Service:
+
+  # CodePipeline: Approval phase
+  SlackWebHookUrl:
+    Type: String
+  SlackVerificationToken:
     Type: String
 
 Resources:
@@ -40,6 +52,8 @@ Resources:
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - SNSTopic
     Properties:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
@@ -77,6 +91,30 @@ Resources:
               OutputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
+        - Name: Test
+          Actions:
+            - Name: Test
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildTestingProject
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Approval
+          Actions:
+            - Name: ApprovalOrDeny
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: '1'
+                Provider: Manual
+              Configuration:
+                NotificationArn: !Ref SNSTopic
+              RunOrder: 1
         - Name: Deploy
           Actions:
             - Name: Deploy
@@ -86,22 +124,13 @@ Resources:
                 Version: 1
                 Provider: ECS
               Configuration:
-                ClusterName: !Ref Cluster
-                ServiceName: !Ref Service
+                ClusterName:
+                  Fn::ImportValue:
+                    !Sub "${ECSStackName}-ClusterName"
+                ServiceName:
+                  Fn::ImportValue:
+                    !Sub "${ECSStackName}-ServiceName"
                 FileName: imagedefinitions.json
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
-        - Name: Check
-          Actions:
-            - Name: Check
-              ActionTypeId:
-                Category: Test
-                Owner: AWS
-                Version: 1
-                Provider: CodeBuild
-              Configuration:
-                ProjectName: !Ref CodeBuildTestingProject
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
@@ -142,6 +171,7 @@ Resources:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                   - iam:PassRole
+                  - sns:Publish
 
   # ----- CodeBuild -----
 
@@ -197,9 +227,13 @@ Resources:
         Type: LINUX_CONTAINER
         EnvironmentVariables:
           - Name: Cluster
-            Value: !Ref Cluster
+            Value:
+              Fn::ImportValue:
+                !Sub "${ECSStackName}-ClusterName"
           - Name: Service
-            Value: !Ref Service
+            Value:
+              Fn::ImportValue:
+                !Sub "${ECSStackName}-ServiceName"
       Name: !Sub ${AWS::StackName}-testing
       ServiceRole: !Ref CodeBuildServiceRole
 
@@ -247,6 +281,269 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecs:DescribeServices
+
+  # Approval phase: Request approval
+
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codepipeline:PutApprovalResult
+      Path: /
+      RoleName: lambda-slack-syscrit
+
+  LambdaApprovalRequestFunction:
+    DependsOn:
+      - LambdaFunctionRole
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
+          SLACK_CHANNEL: cloudformation
+      Handler: index.lambda_handler
+      Role: !GetAtt 'LambdaFunctionRole.Arn'
+      Runtime: python3.6
+      Timeout: 10
+      Code:
+        ZipFile: |
+          # This function is invoked via SNS when the CodePipeline manual approval action starts.
+          # It will take the details from this approval notification and sent an interactive message to Slack that allows users to approve or cancel the deployment.
+
+          import os
+          import json
+          import logging
+          import urllib.parse
+
+          from base64 import b64decode
+          from urllib.request import Request, urlopen
+          from urllib.error import URLError, HTTPError
+
+          # This is passed as a plain-text environment variable for ease of demonstration.
+          # Consider encrypting the value with KMS or use an encrypted parameter in Parameter Store for production deployments.
+          SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
+          SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              print("Received event: " + json.dumps(event, indent=2))
+              message = event["Records"][0]["Sns"]["Message"]
+
+              data = json.loads(message)
+              token = data["approval"]["token"]
+              codepipeline_name = data["approval"]["pipelineName"]
+
+              slack_message = {
+                  "channel": SLACK_CHANNEL,
+                  "text": "Would you like to promote the build to production?",
+                  "attachments": [
+                      {
+                          "text": "Yes to deploy your build to production",
+                          "fallback": "You are unable to promote a build",
+                          "callback_id": "wopr_game",
+                          "color": "#3AA3E3",
+                          "attachment_type": "default",
+                          "actions": [
+                              {
+                                  "name": "deployment",
+                                  "text": "Yes",
+                                  "style": "danger",
+                                  "type": "button",
+                                  "value": json.dumps({"approve": True, "codePipelineToken": token, "codePipelineName": codepipeline_name}),
+                                  "confirm": {
+                                      "title": "Are you sure?",
+                                      "text": "This will deploy the build to production",
+                                      "ok_text": "Yes",
+                                      "dismiss_text": "No"
+                                  }
+                              },
+                              {
+                                  "name": "deployment",
+                                  "text": "No",
+                                  "type": "button",
+                                  "value": json.dumps({"approve": False, "codePipelineToken": token, "codePipelineName": codepipeline_name})
+                              }
+                          ]
+                      }
+                  ]
+              }
+
+              req = Request(SLACK_WEBHOOK_URL, json.dumps(slack_message).encode('utf-8'))
+
+              response = urlopen(req)
+              response.read()
+
+              return None
+
+  SNSTopic:
+    DependsOn:
+      - LambdaApprovalRequestFunction
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: slack syscrit
+      TopicName: slack-syscrit
+      Subscription:
+        - Endpoint: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+          Protocol: lambda
+
+  LambdaApprovalRequestPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref 'SNSTopic'
+
+  # Approval phase: Interactive message handler
+
+  ApiGateway:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: "my-api"
+      Description: "My API"
+      FailOnWarnings: "true"
+
+  ApiGatewayRootMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - ApiGateway
+      - LambdaHandlingInteractiveMessageFunction
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
+          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+      ResourceId: !GetAtt "ApiGateway.RootResourceId"
+      RestApiId: !Ref "ApiGateway"
+
+  ApiGatewayTestResource:
+    Type: AWS::ApiGateway::Resource
+    DependsOn:
+      - ApiGateway
+    Properties:
+      RestApiId: !Ref "ApiGateway"
+      ParentId: !GetAtt "ApiGateway.RootResourceId"
+      PathPart: "test"
+
+  ApiGatewayTestMethod:
+    Type: "AWS::ApiGateway::Method"
+    DependsOn:
+      - ApiGatewayTestResource
+      - LambdaHandlingInteractiveMessageFunction
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
+          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+      ResourceId: !Ref "ApiGatewayTestResource"
+      RestApiId: !Ref "ApiGateway"
+
+  ApiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+      - "ApiGatewayRootMethod"
+      - "ApiGatewayTestMethod"
+    Properties:
+      RestApiId: !Ref "ApiGateway"
+      StageName: "v1"
+
+  LambdaHandlingInteractiveMessageFunction:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - LambdaFunctionRole
+    Properties:
+      Environment:
+        Variables:
+          SLACK_VERIFICATION_TOKEN: !Ref SlackVerificationToken
+      Handler: index.lambda_handler
+      Role: !GetAtt "LambdaFunctionRole.Arn"
+      Runtime: python3.6
+      Timeout: 10
+      Code:
+        ZipFile: |
+          # This function is triggered via API Gateway when a user acts on the Slack interactive message sent by approval_requester.py.
+
+          from urllib.parse import parse_qs
+          import json
+          import os
+          import boto3
+
+          SLACK_VERIFICATION_TOKEN = os.environ['SLACK_VERIFICATION_TOKEN']
+
+          #Triggered by API Gateway
+          #It kicks off a particular CodePipeline project
+          def lambda_handler(event, context):
+          	#print("Received event: " + json.dumps(event, indent=2))
+          	body = parse_qs(event['body'])
+          	payload = json.loads(body['payload'][0])
+
+          	# Validate Slack token
+          	if SLACK_VERIFICATION_TOKEN == payload['token']:
+          		send_slack_message(json.loads(payload['actions'][0]['value']))
+
+          		# This will replace the interactive message with a simple text response.
+          		# You can implement a more complex message update if you would like.
+          		return  {
+          			"isBase64Encoded": "false",
+          			"statusCode": 200,
+          			"body": "{\"text\": \"The approval has been processed\"}"
+          		}
+          	else:
+          		return  {
+          			"isBase64Encoded": "false",
+          			"statusCode": 403,
+          			"body": "{\"error\": \"This request does not include a vailid verification token.\"}"
+          		}
+
+
+          def send_slack_message(action_details):
+          	codepipeline_status = "Approved" if action_details["approve"] else "Rejected"
+          	codepipeline_name = action_details["codePipelineName"]
+          	token = action_details["codePipelineToken"]
+
+          	client = boto3.client('codepipeline')
+          	response_approval = client.put_approval_result(
+          							pipelineName=codepipeline_name,
+          							stageName='Approval',
+          							actionName='ApprovalOrDeny',
+          							result={'summary':'','status':codepipeline_status},
+          							token=token)
+          	print(response_approval)
+
+  LambdaApiGatewayInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/test"
 
 Outputs:
   PipelineUrl:
