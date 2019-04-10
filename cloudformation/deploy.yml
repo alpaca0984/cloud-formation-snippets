@@ -52,8 +52,6 @@ Resources:
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
-    DependsOn:
-      - SNSTopic
     Properties:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
@@ -66,7 +64,7 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: ThirdParty
-                Version: 1
+                Version: '1'
                 Provider: GitHub
               Configuration:
                 Owner: !Ref GitHubUser
@@ -82,7 +80,7 @@ Resources:
               ActionTypeId:
                 Category: Build
                 Owner: AWS
-                Version: 1
+                Version: '1'
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref CodeBuildProject
@@ -97,7 +95,7 @@ Resources:
               ActionTypeId:
                 Category: Test
                 Owner: AWS
-                Version: 1
+                Version: '1'
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref CodeBuildTestingProject
@@ -121,7 +119,7 @@ Resources:
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
-                Version: 1
+                Version: '1'
                 Provider: ECS
               Configuration:
                 ClusterName:
@@ -310,8 +308,6 @@ Resources:
       RoleName: lambda-slack-syscrit
 
   LambdaApprovalRequestFunction:
-    DependsOn:
-      - LambdaFunctionRole
     Type: AWS::Lambda::Function
     Properties:
       Environment:
@@ -395,8 +391,6 @@ Resources:
               return None
 
   SNSTopic:
-    DependsOn:
-      - LambdaApprovalRequestFunction
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: slack syscrit
@@ -420,13 +414,10 @@ Resources:
     Properties:
       Name: "my-api"
       Description: "My API"
-      FailOnWarnings: "true"
+      FailOnWarnings: true
 
   ApiGatewayRootMethod:
     Type: "AWS::ApiGateway::Method"
-    DependsOn:
-      - ApiGateway
-      - LambdaHandlingInteractiveMessageFunction
     Properties:
       AuthorizationType: "NONE"
       HttpMethod: "POST"
@@ -441,8 +432,6 @@ Resources:
 
   ApiGatewayTestResource:
     Type: AWS::ApiGateway::Resource
-    DependsOn:
-      - ApiGateway
     Properties:
       RestApiId: !Ref "ApiGateway"
       ParentId: !GetAtt "ApiGateway.RootResourceId"
@@ -450,9 +439,6 @@ Resources:
 
   ApiGatewayTestMethod:
     Type: "AWS::ApiGateway::Method"
-    DependsOn:
-      - ApiGatewayTestResource
-      - LambdaHandlingInteractiveMessageFunction
     Properties:
       AuthorizationType: "NONE"
       HttpMethod: "POST"
@@ -476,8 +462,6 @@ Resources:
 
   LambdaHandlingInteractiveMessageFunction:
     Type: "AWS::Lambda::Function"
-    DependsOn:
-      - LambdaFunctionRole
     Properties:
       Environment:
         Variables:
