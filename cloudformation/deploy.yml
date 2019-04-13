@@ -9,6 +9,10 @@
 #     https://qiita.com/tonishy/items/202056e9f7a865eb60be
 #   - CloudFormation example for API Gateway integration to Lambda function
 #     https://gist.github.com/magnetikonline/c314952045eee8e8375b82bc7ec68e88
+#   - Getting Started with the AWS SDK for JavaScript > Node.js
+#     https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/getting-started-nodejs.html
+#   - Creating a Lambda State Machine Using AWS CloudFormation
+#     https://docs.aws.amazon.com/step-functions/latest/dg/tutorial-lambda-state-machine-cloudformation.html
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
@@ -396,7 +400,7 @@ Resources:
       DisplayName: slack syscrit
       TopicName: slack-syscrit
       Subscription:
-        - Endpoint: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+        - Endpoint: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
           Protocol: lambda
 
   LambdaApprovalRequestPermission:
@@ -528,6 +532,105 @@ Resources:
       FunctionName: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
       Principal: "apigateway.amazonaws.com"
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/test"
+
+  # --------------------------------
+  # StepFunctions
+  # --------------------------------
+  LambdaStateMachineTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
+          SLACK_CHANNEL: cloudformation
+          AWS_REGION: !Ref AWS::Region
+          AWS_STATE_MACHINE_ARN: !Ref MyStateMachine
+      Handler: index.lambda_handler
+      Role: !GetAtt 'LambdaFunctionRole.Arn'
+      Runtime: nodejs8.10
+      Timeout: 25
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const stepFunctions = new AWS.StepFunctions({ region: process.env.AWS_REGION });
+          const uuid = require('uuid');
+
+          module.exports = lambda_handler(event, context) {
+            const newEvent = {
+              snsMessage: event["Records"][0]["Sns"]["Message"],
+              slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+              slackChannel: process.env.SLACK_CHANNEL
+            };
+
+            const params = {
+              stateMachineArn: process.env.AWS_STATE_MACHINE_ARN,
+              input: JSON.stringify(newEvent),
+              name: uuid.v4()
+            };
+
+            return stepFunctions.startExecution(params).promise()
+              .then(data => {
+                console.log(`Successfully executed stateMachine. ${JSON.stringify(data)}`);
+              })
+              .catch(err => {
+                console.error(err, err.stack);
+              });
+          };
+
+  MyLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      Role: !GetAtt [ LambdaFunctionRole, Arn ]
+      Code:
+        ZipFile: |
+          exports.handler = (event, context, callback) => {
+              callback(null, "Hello World!");
+          };
+      Runtime: "nodejs8.10"
+      Timeout: "25"
+
+  MyStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "Comment": "A Hello World example using an AWS Lambda function",
+              "StartAt": "HelloWorld",
+              "States": {
+                "HelloWorld": {
+                  "Type": "Task",
+                  "Resource": "${lambdaArn}",
+                  "End": true
+                }
+              }
+            }
+          - {lambdaArn: !GetAtt [ MyLambdaFunction, Arn ]}
+      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
 
 Outputs:
   PipelineUrl:
