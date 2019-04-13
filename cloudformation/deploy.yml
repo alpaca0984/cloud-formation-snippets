@@ -543,7 +543,6 @@ Resources:
         Variables:
           SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
           SLACK_CHANNEL: cloudformation
-          AWS_REGION: !Ref AWS::Region
           AWS_STATE_MACHINE_ARN: !Ref MyStateMachine
       Handler: index.lambda_handler
       Role: !GetAtt 'LambdaFunctionRole.Arn'
@@ -552,6 +551,8 @@ Resources:
       Code:
         ZipFile: |
           const AWS = require('aws-sdk');
+          # Lambda Execution Environment and Available Libraries
+          #   https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html
           const stepFunctions = new AWS.StepFunctions({ region: process.env.AWS_REGION });
           const uuid = require('uuid');
 
