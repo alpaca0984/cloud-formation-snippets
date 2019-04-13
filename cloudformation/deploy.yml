@@ -564,7 +564,6 @@ Resources:
               slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
               slackChannel: process.env.SLACK_CHANNEL
             };
-
             const params = {
               stateMachineArn: process.env.AWS_STATE_MACHINE_ARN,
               input: JSON.stringify(newEvent),
