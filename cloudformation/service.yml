@@ -3,6 +3,8 @@
 #     https://medium.com/boltops/gentle-introduction-to-how-aws-ecs-works-with-example-tutorial-cea3d27ce63d
 #   - Amazon Elastic Container Service Template Snippets
 #     https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/quickref-ecs.html
+#   - A reference architecture for deploying containerized microservices with Amazon ECS and AWS CloudFormation (YAML)
+#     https://github.com/aws-samples/ecs-refarch-cloudformation
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
