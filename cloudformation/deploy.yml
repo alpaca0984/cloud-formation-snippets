@@ -322,7 +322,7 @@ Resources:
       Handler: index.lambda_handler
       Role: !GetAtt 'LambdaFunctionRole.Arn'
       Runtime: python3.6
-      Timeout: 10
+      Timeout: 25
       Code:
         ZipFile: |
           # This function is invoked via SNS when the CodePipeline manual approval action starts.
@@ -337,17 +337,13 @@ Resources:
           from urllib.request import Request, urlopen
           from urllib.error import URLError, HTTPError
 
-          # This is passed as a plain-text environment variable for ease of demonstration.
-          # Consider encrypting the value with KMS or use an encrypted parameter in Parameter Store for production deployments.
-          # SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
-          # SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
-
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
 
           def lambda_handler(event, context):
               print("Received event: " + json.dumps(event, indent=2))
-              # message = event["Records"][0]["Sns"]["Message"]
+              slack_webhook_url = event["slackWebhookUrl"]
+              slack_channel = event["slackChannel"]
               message = event["snsMessage"]
 
               data = json.loads(message)
@@ -355,7 +351,7 @@ Resources:
               codepipeline_name = data["approval"]["pipelineName"]
 
               slack_message = {
-                  "channel": event["slackChannel"],
+                  "channel": slack_channel,
                   "text": "Would you like to promote the build to production?",
                   "attachments": [
                       {
@@ -389,7 +385,7 @@ Resources:
                   ]
               }
 
-              req = Request(event["slackWebhookUrl"], json.dumps(slack_message).encode('utf-8'))
+              req = Request(slack_webhook_url, json.dumps(slack_message).encode('utf-8'))
 
               response = urlopen(req)
               response.read()
@@ -402,23 +398,16 @@ Resources:
       DisplayName: slack syscrit
       TopicName: slack-syscrit
       Subscription:
-        - Endpoint: !GetAtt 'LambdaTriggerStateMachineFunction.Arn'
+        - Endpoint: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
           Protocol: lambda
 
-  LambdaTriggerStateMachinePermission:
+  LambdaStateMachineTriggerPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt 'LambdaTriggerStateMachineFunction.Arn'
+      FunctionName: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
       Principal: sns.amazonaws.com
       SourceArn: !Ref 'SNSTopic'
-  # LambdaApprovalRequestPermission:
-  #   Type: AWS::Lambda::Permission
-  #   Properties:
-  #     Action: lambda:InvokeFunction
-  #     FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
-  #     Principal: sns.amazonaws.com
-  #     SourceArn: !Ref 'SNSTopic'
 
   # Approval phase: Interactive message handler
 
@@ -545,7 +534,7 @@ Resources:
   # --------------------------------
   # StepFunctions
   # --------------------------------
-  LambdaTriggerStateMachineFunction:
+  LambdaStateMachineTriggerFunction:
     Type: AWS::Lambda::Function
     Properties:
       Environment:
@@ -587,7 +576,7 @@ Resources:
               });
           };
 
-  DummyLambdaFunction:
+  StateMachineSampleLambdaFunction:
     Type: "AWS::Lambda::Function"
     Properties:
       Handler: "index.handler"
@@ -614,7 +603,7 @@ Resources:
               "States": {
                 "HelloWorld": {
                   "Type": "Task",
-                  "Resource": "${dummyLambdaArn}",
+                  "Resource": "${stateMachineSampleLambdaArn}",
                   "Next": "wait_three_seconds"
                 },
                 "wait_three_seconds": {
@@ -629,7 +618,7 @@ Resources:
                 }
               }
             }
-          - dummyLambdaArn: !GetAtt 'DummyLambdaFunction.Arn'
+          - stateMachineSampleLambdaArn: !GetAtt 'StateMachineSampleLambdaFunction.Arn'
             approvalRequestFunctionArn: !GetAtt 'LambdaApprovalRequestFunction.Arn'
 
   StatesExecutionRole:
