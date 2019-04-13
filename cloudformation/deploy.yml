@@ -308,6 +308,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - codepipeline:PutApprovalResult
+                  - states:StartExecution
       Path: /
       RoleName: lambda-slack-syscrit
 
@@ -400,16 +401,23 @@ Resources:
       DisplayName: slack syscrit
       TopicName: slack-syscrit
       Subscription:
-        - Endpoint: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
+        - Endpoint: !GetAtt 'LambdaTriggerStateMachineFunction.Arn'
           Protocol: lambda
 
-  LambdaApprovalRequestPermission:
+  LambdaTriggerStateMachinePermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+      FunctionName: !GetAtt 'LambdaTriggerStateMachineFunction.Arn'
       Principal: sns.amazonaws.com
       SourceArn: !Ref 'SNSTopic'
+  # LambdaApprovalRequestPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     Action: lambda:InvokeFunction
+  #     FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+  #     Principal: sns.amazonaws.com
+  #     SourceArn: !Ref 'SNSTopic'
 
   # Approval phase: Interactive message handler
 
@@ -536,7 +544,7 @@ Resources:
   # --------------------------------
   # StepFunctions
   # --------------------------------
-  LambdaStateMachineTriggerFunction:
+  LambdaTriggerStateMachineFunction:
     Type: AWS::Lambda::Function
     Properties:
       Environment:
@@ -551,12 +559,12 @@ Resources:
       Code:
         ZipFile: |
           const AWS = require('aws-sdk');
-          # Lambda Execution Environment and Available Libraries
-          #   https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html
+          // Lambda Execution Environment and Available Libraries
+          //   https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html
           const stepFunctions = new AWS.StepFunctions({ region: process.env.AWS_REGION });
           const uuid = require('uuid');
 
-          module.exports = lambda_handler(event, context) {
+          exports.lambda_handler = (event) => {
             const newEvent = {
               snsMessage: event["Records"][0]["Sns"]["Message"],
               slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
