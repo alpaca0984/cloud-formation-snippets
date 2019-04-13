@@ -46,6 +46,10 @@ Parameters:
     Type: String
   SlackVerificationToken:
     Type: String
+  ApiGatewayStageName:
+    Type: "String"
+    AllowedPattern: "^[a-z0-9]+$"
+    Default: "v1"
 
 Resources:
   # ----- CodePipeline -----
@@ -460,7 +464,7 @@ Resources:
       - "ApiGatewayTestMethod"
     Properties:
       RestApiId: !Ref "ApiGateway"
-      StageName: "v1"
+      StageName: !Ref "ApiGatewayStageName"
 
   LambdaHandlingInteractiveMessageFunction:
     Type: "AWS::Lambda::Function"
@@ -644,5 +648,8 @@ Resources:
                 Resource: "*"
 
 Outputs:
+  ApiGatewayInteractiveMessageEndpoint:
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStageName}/test"
+
   PipelineUrl:
-    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}
+    Value: !Sub "https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}"
