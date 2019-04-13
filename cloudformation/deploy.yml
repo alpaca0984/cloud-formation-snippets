@@ -339,22 +339,23 @@ Resources:
 
           # This is passed as a plain-text environment variable for ease of demonstration.
           # Consider encrypting the value with KMS or use an encrypted parameter in Parameter Store for production deployments.
-          SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
-          SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
+          # SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
+          # SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
 
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
 
           def lambda_handler(event, context):
               print("Received event: " + json.dumps(event, indent=2))
-              message = event["Records"][0]["Sns"]["Message"]
+              # message = event["Records"][0]["Sns"]["Message"]
+              message = event["snsMessage"]
 
               data = json.loads(message)
               token = data["approval"]["token"]
               codepipeline_name = data["approval"]["pipelineName"]
 
               slack_message = {
-                  "channel": SLACK_CHANNEL,
+                  "channel": event["slackChannel"],
                   "text": "Would you like to promote the build to production?",
                   "attachments": [
                       {
@@ -388,7 +389,7 @@ Resources:
                   ]
               }
 
-              req = Request(SLACK_WEBHOOK_URL, json.dumps(slack_message).encode('utf-8'))
+              req = Request(event["slackWebhookUrl"], json.dumps(slack_message).encode('utf-8'))
 
               response = urlopen(req)
               response.read()
@@ -551,7 +552,7 @@ Resources:
         Variables:
           SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
           SLACK_CHANNEL: cloudformation
-          AWS_STATE_MACHINE_ARN: !Ref MyStateMachine
+          AWS_STATE_MACHINE_ARN: !Ref DeploymentStateMachine
       Handler: index.lambda_handler
       Role: !GetAtt 'LambdaFunctionRole.Arn'
       Runtime: nodejs8.10
@@ -586,7 +587,7 @@ Resources:
               });
           };
 
-  MyLambdaFunction:
+  DummyLambdaFunction:
     Type: "AWS::Lambda::Function"
     Properties:
       Handler: "index.handler"
@@ -594,30 +595,42 @@ Resources:
       Code:
         ZipFile: |
           exports.handler = (event, context, callback) => {
-              callback(null, "Hello World!");
+              console.log("Hello World!");
+              callback(null, event);
           };
       Runtime: "nodejs8.10"
       Timeout: "25"
 
-  MyStateMachine:
+  DeploymentStateMachine:
     Type: "AWS::StepFunctions::StateMachine"
     Properties:
+      RoleArn: !GetAtt 'StatesExecutionRole.Arn'
       DefinitionString:
         !Sub
           - |-
             {
-              "Comment": "A Hello World example using an AWS Lambda function",
+              "Comment": "CodePipeline Approval phase using an AWS state machine",
               "StartAt": "HelloWorld",
               "States": {
                 "HelloWorld": {
                   "Type": "Task",
-                  "Resource": "${lambdaArn}",
+                  "Resource": "${dummyLambdaArn}",
+                  "Next": "wait_three_seconds"
+                },
+                "wait_three_seconds": {
+                  "Type": "Wait",
+                  "Seconds": 3,
+                  "Next": "SendApprovalRequestToSlack"
+                },
+                "SendApprovalRequestToSlack": {
+                  "Type": "Task",
+                  "Resource": "${approvalRequestFunctionArn}",
                   "End": true
                 }
               }
             }
-          - {lambdaArn: !GetAtt [ MyLambdaFunction, Arn ]}
-      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]
+          - dummyLambdaArn: !GetAtt 'DummyLambdaFunction.Arn'
+            approvalRequestFunctionArn: !GetAtt 'LambdaApprovalRequestFunction.Arn'
 
   StatesExecutionRole:
     Type: "AWS::IAM::Role"
