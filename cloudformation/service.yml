@@ -123,13 +123,38 @@ Resources:
     DependsOn: LoadBalancerListener
     Properties:
       Cluster: !Ref ECSCluster
-      Role: ecsServiceRole
+      Role: !Ref ECSServiceRole
       DesiredCount: !Ref DesiredCount
       TaskDefinition: !Ref TaskDefinition
       LoadBalancers:
         - ContainerName: "cf-web"
           ContainerPort: 5000
           TargetGroupArn: !Ref DefaultTargetGroup
+
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+              - 'ec2:Describe*'
+              - 'ec2:AuthorizeSecurityGroupIngress'
+            Resource: '*'
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -143,6 +168,7 @@ Resources:
 
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: ECSServiceRole
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
