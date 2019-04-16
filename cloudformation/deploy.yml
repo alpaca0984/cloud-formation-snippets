@@ -9,6 +9,10 @@
 #     https://qiita.com/tonishy/items/202056e9f7a865eb60be
 #   - CloudFormation example for API Gateway integration to Lambda function
 #     https://gist.github.com/magnetikonline/c314952045eee8e8375b82bc7ec68e88
+#   - Getting Started with the AWS SDK for JavaScript > Node.js
+#     https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/getting-started-nodejs.html
+#   - Creating a Lambda State Machine Using AWS CloudFormation
+#     https://docs.aws.amazon.com/step-functions/latest/dg/tutorial-lambda-state-machine-cloudformation.html
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Creating ECS service
@@ -42,6 +46,10 @@ Parameters:
     Type: String
   SlackVerificationToken:
     Type: String
+  ApiGatewayStageName:
+    Type: "String"
+    AllowedPattern: "^[a-z0-9]+$"
+    Default: "v1"
 
 Resources:
   # ----- CodePipeline -----
@@ -304,6 +312,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - codepipeline:PutApprovalResult
+                  - states:StartExecution
       Path: /
       RoleName: lambda-slack-syscrit
 
@@ -317,7 +326,7 @@ Resources:
       Handler: index.lambda_handler
       Role: !GetAtt 'LambdaFunctionRole.Arn'
       Runtime: python3.6
-      Timeout: 10
+      Timeout: 25
       Code:
         ZipFile: |
           # This function is invoked via SNS when the CodePipeline manual approval action starts.
@@ -332,24 +341,21 @@ Resources:
           from urllib.request import Request, urlopen
           from urllib.error import URLError, HTTPError
 
-          # This is passed as a plain-text environment variable for ease of demonstration.
-          # Consider encrypting the value with KMS or use an encrypted parameter in Parameter Store for production deployments.
-          SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
-          SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
-
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
 
           def lambda_handler(event, context):
               print("Received event: " + json.dumps(event, indent=2))
-              message = event["Records"][0]["Sns"]["Message"]
+              slack_webhook_url = event["slackWebhookUrl"]
+              slack_channel = event["slackChannel"]
+              message = event["snsMessage"]
 
               data = json.loads(message)
               token = data["approval"]["token"]
               codepipeline_name = data["approval"]["pipelineName"]
 
               slack_message = {
-                  "channel": SLACK_CHANNEL,
+                  "channel": slack_channel,
                   "text": "Would you like to promote the build to production?",
                   "attachments": [
                       {
@@ -383,7 +389,7 @@ Resources:
                   ]
               }
 
-              req = Request(SLACK_WEBHOOK_URL, json.dumps(slack_message).encode('utf-8'))
+              req = Request(slack_webhook_url, json.dumps(slack_message).encode('utf-8'))
 
               response = urlopen(req)
               response.read()
@@ -396,14 +402,14 @@ Resources:
       DisplayName: slack syscrit
       TopicName: slack-syscrit
       Subscription:
-        - Endpoint: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+        - Endpoint: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
           Protocol: lambda
 
-  LambdaApprovalRequestPermission:
+  LambdaStateMachineTriggerPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+      FunctionName: !GetAtt 'LambdaStateMachineTriggerFunction.Arn'
       Principal: sns.amazonaws.com
       SourceArn: !Ref 'SNSTopic'
 
@@ -458,7 +464,7 @@ Resources:
       - "ApiGatewayTestMethod"
     Properties:
       RestApiId: !Ref "ApiGateway"
-      StageName: "v1"
+      StageName: !Ref "ApiGatewayStageName"
 
   LambdaHandlingInteractiveMessageFunction:
     Type: "AWS::Lambda::Function"
@@ -529,6 +535,120 @@ Resources:
       Principal: "apigateway.amazonaws.com"
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/test"
 
+  # --------------------------------
+  # StepFunctions
+  # --------------------------------
+  LambdaStateMachineTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebHookUrl
+          SLACK_CHANNEL: cloudformation
+          AWS_STATE_MACHINE_ARN: !Ref DeploymentStateMachine
+      Handler: index.lambda_handler
+      Role: !GetAtt 'LambdaFunctionRole.Arn'
+      Runtime: nodejs8.10
+      Timeout: 25
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          // Lambda Execution Environment and Available Libraries
+          //   https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html
+          const stepFunctions = new AWS.StepFunctions({ region: process.env.AWS_REGION });
+          const uuid = require('uuid');
+
+          exports.lambda_handler = (event) => {
+            const newEvent = {
+              snsMessage: event["Records"][0]["Sns"]["Message"],
+              slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+              slackChannel: process.env.SLACK_CHANNEL
+            };
+            const params = {
+              stateMachineArn: process.env.AWS_STATE_MACHINE_ARN,
+              input: JSON.stringify(newEvent),
+              name: uuid.v4()
+            };
+
+            return stepFunctions.startExecution(params).promise()
+              .then(data => {
+                console.log(`Successfully executed stateMachine. ${JSON.stringify(data)}`);
+              })
+              .catch(err => {
+                console.error(err, err.stack);
+              });
+          };
+
+  StateMachineSampleLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      Role: !GetAtt [ LambdaFunctionRole, Arn ]
+      Code:
+        ZipFile: |
+          exports.handler = (event, context, callback) => {
+              console.log("Hello World!");
+              callback(null, event);
+          };
+      Runtime: "nodejs8.10"
+      Timeout: "25"
+
+  DeploymentStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      RoleArn: !GetAtt 'StatesExecutionRole.Arn'
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "Comment": "CodePipeline Approval phase using an AWS state machine",
+              "StartAt": "HelloWorld",
+              "States": {
+                "HelloWorld": {
+                  "Type": "Task",
+                  "Resource": "${stateMachineSampleLambdaArn}",
+                  "Next": "wait_three_seconds"
+                },
+                "wait_three_seconds": {
+                  "Type": "Wait",
+                  "Seconds": 3,
+                  "Next": "SendApprovalRequestToSlack"
+                },
+                "SendApprovalRequestToSlack": {
+                  "Type": "Task",
+                  "Resource": "${approvalRequestFunctionArn}",
+                  "End": true
+                }
+              }
+            }
+          - stateMachineSampleLambdaArn: !GetAtt 'StateMachineSampleLambdaFunction.Arn'
+            approvalRequestFunctionArn: !GetAtt 'LambdaApprovalRequestFunction.Arn'
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+
 Outputs:
+  ApiGatewayInteractiveMessageEndpoint:
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStageName}/test"
+
   PipelineUrl:
-    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}
+    Value: !Sub "https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}"
