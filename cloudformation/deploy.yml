@@ -432,7 +432,7 @@ Resources:
         Type: "AWS_PROXY"
         Uri: !Sub
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
-          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+          - lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
       ResourceId: !GetAtt "ApiGateway.RootResourceId"
       RestApiId: !Ref "ApiGateway"
 
@@ -453,7 +453,7 @@ Resources:
         Type: "AWS_PROXY"
         Uri: !Sub
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
-          - { lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn" }
+          - lambdaArn: !GetAtt "LambdaHandlingInteractiveMessageFunction.Arn"
       ResourceId: !Ref "ApiGatewayTestResource"
       RestApiId: !Ref "ApiGateway"
 
